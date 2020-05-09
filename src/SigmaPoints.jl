@@ -1,6 +1,6 @@
 module SigmaPoints
 
-using LinearAlgebra: cholesky, det, Hermitian
+using LinearAlgebra: cholesky, det, Symmetric
 
 export MerweScaled, calculate_σ_points, num_σ_points
 
@@ -61,7 +61,7 @@ Compute weights for each σ-point for the covariance `P` and mean `x`.
 function σ_weights(
     ;n::Int64, α::Float64, β::Float64, κ::Float64
 )::Tuple{Array{Float64, 1}, Array{Float64, 1}}
-    λ = α^2 * (n + κ) - n
+    λ = α ^ 2 * (n + κ) - n
     c = 0.5 / (n + λ)
 
     size = 2n + 1
@@ -92,11 +92,10 @@ for an Unscented Kalman Filter (UKF) given the mean `x` and covariance `P`.
 function calculate_σ_points(
     ;σ_parameters::MerweScaled, x::Array{Float64, 1}, P::Array{Float64, 2}
 )::Array{Float64, 2}
-    λ = σ_parameters.α^2 * (σ_parameters.n + σ_parameters.κ) - σ_parameters.n
-    U = P * (λ + σ_parameters.n)
-    U = cholesky(Hermitian(U)).U
+    λ = σ_parameters.α ^ 2 * (σ_parameters.n + σ_parameters.κ) - σ_parameters.n
+    U = cholesky(Symmetric(P * (λ + σ_parameters.n))).U
 
-    Σ = Matrix{Float64}(undef, 2σ_parameters.n + 1, σ_parameters.n)
+    Σ = zeros(Float64, 2σ_parameters.n + 1, σ_parameters.n)
     Σ[1, :] = x
     for i = 1:σ_parameters.n
         Σ[i + 1, :] = σ_parameters.residual_x(y=x, x=-U[i, :])

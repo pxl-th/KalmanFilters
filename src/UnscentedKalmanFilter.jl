@@ -1,6 +1,7 @@
 module UnscentedKalmanFilter
 include("SigmaPoints.jl")
 
+using InteractiveUtils
 using LinearAlgebra: I, dot, diagm
 using .SigmaPoints: MerweScaled, calculate_σ_points, num_σ_points
 
@@ -68,6 +69,28 @@ function UKFState(
     )
 end
 
+function Base.show(io::IO, ukf::UKFState)
+    print(
+        io,
+        "UKF State:\n",
+        "dim_x: ", repr(MIME("text/plain"), ukf.dim_x, context=io), "\n",
+        "dim_z: ", repr(MIME("text/plain"), ukf.dim_z, context=io), "\n",
+        "x: ", repr(MIME("text/plain"), ukf.x, context=io), "\n",
+        "P: ", repr(MIME("text/plain"), ukf.P, context=io), "\n",
+        "K: ", repr(MIME("text/plain"), ukf.K, context=io), "\n",
+        "y: ", repr(MIME("text/plain"), ukf.y, context=io), "\n",
+        "S: ", repr(MIME("text/plain"), ukf.S, context=io), "\n",
+        "S_inv: ", repr(MIME("text/plain"), ukf.S_inv, context=io), "\n",
+        "σ_parameters: ", repr(MIME("text/plain"), ukf.σ_parameters, context=io), "\n",
+        "σ_fx: ", repr(MIME("text/plain"), ukf.σ_fx, context=io), "\n",
+        "σ_hx: ", repr(MIME("text/plain"), ukf.σ_hx, context=io), "\n",
+        "add_x: ", repr(MIME("text/plain"), ukf.add_x, context=io), "\n",
+        "residual_x: ", repr(MIME("text/plain"), ukf.residual_x, context=io), "\n",
+        "residual_z: ", repr(MIME("text/plain"), ukf.residual_z, context=io), "\n",
+        "mean_f: ", repr(MIME("text/plain"), ukf.mean_f, context=io), "\n",
+    )
+end
+
 function compute_process_σ!(
     ;ukf_state::UKFState, δt::Float64, fx::Function, fx_args...
 )
@@ -92,12 +115,14 @@ end
 """
 Calculate cross-variance between filter's state and measurement.
 """
-function cross_variance(;ukf::UKFState, z::Array{Float64, 1})::Array{Float64, 2}
-    cv = Matrix{Float64}(undef, size(ukf.σ_fx, 2), size(ukf.σ_hx, 2))
+function cross_variance(
+    ;ukf::UKFState, x::Array{Float64, 1}, z::Array{Float64, 1}
+)::Array{Float64, 2}
+    cv = zeros(Float64, size(ukf.σ_fx, 2), size(ukf.σ_hx, 2))
     for i = 1:size(ukf.σ_fx, 1)
-        δx = ukf.residual_x(y=ukf.σ_fx[i, :], x=ukf.x)
+        δx = ukf.residual_x(y=ukf.σ_fx[i, :], x=x)
         δz = ukf.residual_z(y=ukf.σ_hx[i, :], x=z)
-        cv += outer(δx, δz) * ukf.σ_parameters.Σ_w[i]
+        cv += ukf.σ_parameters.Σ_w[i] * outer(δx, δz)
     end
     cv
 end
@@ -159,16 +184,16 @@ end
 """
 ```julia
 predict!(
-    ;ukf_state::UKFState, δt::Float64, fx::Function, fx_args...
+    ;ukf::UKFState, δt::Float64, fx::Function, fx_args...
 )
 ```
 
 Perform prediction of the Unscented Kalman Filter (UKF).
-This updates `x` and `P` of the `ukf_state`
+This updates `x` and `P` of the `ukf`
 to contain predicted state and covariance.
 
 # Arguments
-- `ukf_state::UKFState`: State of the UKF on which to perform prediction.
+- `ukf::UKFState`: State of the UKF on which to perform prediction.
 - `δt::Float64`: Time delta.
 - `Q::Union{Nothing, Array{Float64, 2}}`: Process noise.
 - `fx::Function(;x::Array{Float64, 1}, δt::Float64, ...)`:
@@ -179,19 +204,19 @@ to contain predicted state and covariance.
     Must contain at least `x` and `δt` arguments.
 """
 function predict!(
-    ;ukf_state::UKFState, δt::Float64,
+    ;ukf::UKFState, δt::Float64,
     Q::Union{Nothing, Array{Float64, 2}},
     fx::Function, fx_args...
 )
-    compute_process_σ!(ukf_state=ukf_state, δt=δt, fx=fx; fx_args...)
-    ukf_state.x[:], ukf_state.P[:] = unscented_transform(
-        Σ=ukf_state.σ_fx,
-        Σ_w=ukf_state.σ_parameters.Σ_w, m_w=ukf_state.σ_parameters.m_w,
+    compute_process_σ!(ukf_state=ukf, δt=δt, fx=fx; fx_args...)
+    ukf.x[:], ukf.P[:] = unscented_transform(
+        Σ=ukf.σ_fx,
+        Σ_w=ukf.σ_parameters.Σ_w, m_w=ukf.σ_parameters.m_w,
         noise_cov=Q,
-        mean_f=ukf_state.mean_f, residual_x=ukf_state.residual_x
+        mean_f=ukf.mean_f, residual_x=ukf.residual_x
     )
-    ukf_state.σ_fx[:] = calculate_σ_points(
-        σ_parameters=ukf_state.σ_parameters, x=ukf_state.x, P=ukf_state.P
+    ukf.σ_fx[:] = calculate_σ_points(
+        σ_parameters=ukf.σ_parameters, x=ukf.x, P=ukf.P
     )
 end
 
@@ -237,11 +262,11 @@ function update!(
     )
     ukf.S_inv[:] = inv(ukf.S)
 
-    cv = cross_variance(ukf=ukf, z=z)
+    cv = cross_variance(ukf=ukf, x=zp, z=z)
     ukf.K[:] = cv * ukf.S_inv
     ukf.y[:] = ukf.residual_z(y=z, x=zp)
 
-    ukf.x[:] = ukf.add_x(y=ukf.x, x=(ukf.K * ukf.y))
+    ukf.x[:] = ukf.add_x(ukf.x, ukf.K * ukf.y)  # TODO fix doc for add_x
     ukf.P[:] = ukf.P - ukf.K * (ukf.S * ukf.K')
 end
 

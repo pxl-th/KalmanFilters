@@ -1,12 +1,15 @@
-include("UnscentedKalmanFilter.jl")
+using DelimitedFiles: readdlm
 using LinearAlgebra: dot, I
+
+include("UnscentedKalmanFilter.jl")
 using .UnscentedKalmanFilter
 using .UnscentedKalmanFilter.SigmaPoints
 
 function normalize_angle(α::Float64)::Float64
-    α = α % (2 * π)
+    m = 2π
+    α = α > 0 ? α % m : m + (α % m)
     if α > π
-        α -= 2 * π
+        α -= m
     end
     α
 end
@@ -20,7 +23,7 @@ function state_residual(
 end
 
 function state_add(
-    ;y::Array{Float64, 1}, x::Array{Float64, 1}
+    y::Array{Float64, 1}, x::Array{Float64, 1}
 )::Array{Float64, 1}
     r = y + x
     r[3] = normalize_angle(r[3])
@@ -37,9 +40,7 @@ function state_mean(
     ]
 end
 
-function hx(;x::Array{Float64, 1})::Array{Float64, 1}
-    x
-end
+hx(;x::Array{Float64, 1})::Array{Float64, 1} = x
 
 function fx(
     ;x::Array{Float64, 1}, δt::Float64,
@@ -61,33 +62,63 @@ function fx(
     x + [-r * sin(θ) + r * sin(θ + β); r * cos(θ) - r * cos(θ + β); β]
 end
 
-const wheelbase = 2.9591
+load_from_txt(path::String) = readdlm(path, ' ', Float64, '\n')
 
-σ_parameters = MerweScaled(n=3, α=1e-3, β=2.0, κ=0.0, residual_x=state_residual)
-ukf = UKFState(
-    dim_x=3, dim_z=3,
-    σ_parameters=σ_parameters,
-    add_x=state_add, residual_x=state_residual, residual_z=state_residual
-)
-ukf.x[:] = [0;0;1.5588782]
-ukf.P[:] *= 0.1
+function main()
+    base_path = raw"C:\Users\tonys\projects\carla-dataset\high-quality\recording-2020-05-01-13-52-24-005689"
+    positions_time = load_from_txt(joinpath(base_path, "gnss", "timestamp"))
+    positions = load_from_txt(joinpath(base_path, "gnss", "enu"))[:, 1:2]
 
-δt = 1.0 / 50.0
-μ = [1.32280445e+01, 9.72143200e-04]
-z = [-0.4884202, 1.03592605, 1.55887818]
-Q = [[4e-12 4e-10 2e-8]; [4e-10 4e-8 2e-6]; [2e-8 2e-6 1e-4]]
-R = Matrix{Float64}(I, 3, 3) * 0.1
+    imu_time = load_from_txt(joinpath(base_path, "imu", "timestamp"))
+    compass = load_from_txt(joinpath(base_path, "imu", "compass"))
+    speed = load_from_txt(joinpath(base_path, "imu", "speed"))
+    steer = load_from_txt(joinpath(base_path, "imu", "steer"))
+    #
+    # Convert data
+    compass *= π / 180
+    steer *= -70.0 * π / 180
+    wheelbase = 2.9591
+    println("Loaded data")
 
-println("Raw")
-println(ukf.x)
-println(ukf.P)
+    σ_parameters = MerweScaled(n=3, α=1e-3, β=2.0, κ=0.0, residual_x=state_residual)
+    ukf = UKFState(
+        dim_x=3, dim_z=3,
+        σ_parameters=σ_parameters,
+        mean_f=state_mean,
+        residual_x=state_residual, residual_z=state_residual
+    )
+    ukf.x[:] = [positions[1, 1]; positions[1, 2]; compass[1]]
+    ukf.P[:] *= 0.1
 
-predict!(ukf_state=ukf, δt=δt, Q=Q, fx=fx, μ=μ, wheelbase=wheelbase)
-println("Predict")
-println(ukf.x)
-println(ukf.P)
+    δt = 1.0 / 50
+    μ = zeros(Float64, 2)
+    z = zeros(Float64, 3)
+    R = Matrix{Float64}(I, 3, 3) * 0.1
+    Q = Float64[[4e-12 4e-10 2e-8]; [4e-10 4e-8 2e-6]; [2e-8 2e-6 1e-4]]
 
-update!(ukf=ukf, z=z, R=R, hx=hx)
-println("Update")
-println(ukf.x)
-println(ukf.P)
+    cmp = IOContext(stdout, :compact => true, :limit => true)
+    println(cmp, ukf)
+
+    pos_i::Int64 = 1
+    can_update::Bool = false
+    for (i, t) = enumerate(imu_time)
+
+        μ[1] = speed[i]
+        μ[2] = steer[i]
+        predict!(ukf=ukf, δt=δt, Q=Q, fx=fx, μ=μ, wheelbase=wheelbase)
+
+        can_update = pos_i < size(positions_time, 1) && (
+            abs(t - positions_time[pos_i]) < δt
+            || t > positions_time[pos_i]
+        )
+        if can_update
+            z[1:2] = positions[pos_i, :]
+            z[3] = compass[i]
+            update!(ukf=ukf, z=z, R=R, hx=hx)
+            pos_i += 1
+        end
+    end
+    println(cmp, ukf)
+end
+
+main()

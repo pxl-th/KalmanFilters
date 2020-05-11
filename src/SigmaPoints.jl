@@ -1,15 +1,16 @@
 module SigmaPoints
+export MerweScaled, calculate_σ_points, num_σ_points
 
 using LinearAlgebra: cholesky, det, Symmetric
 
-export MerweScaled, calculate_σ_points, num_σ_points
-
 """
 ```julia
-MerweScaled(;n::Int64, α::Float64, β::Float64, κ::Float64)
+MerweScaled(
+    ;n::Int64, α::Float64, β::Float64, κ::Float64, residual_x::Function = -
+)
 ```
 
-# Parameters for the Van der Merwe's σ-points generation
+# Parameters for the Van der Merwe's σ-points
 - `n::Int64`: Dimensionality of the state. `2n+1` will be generated
 - `α::Float64`: Spread of the σ-points around the mean.
 - `β::Float64`: Prior knowledge of the distribution of the mean.
@@ -17,9 +18,6 @@ MerweScaled(;n::Int64, α::Float64, β::Float64, κ::Float64)
 - `Σ_w::Array{Float64, 1}`: Weights for each σ-point for the covariance.
 - `m_w::Array{Float64, 1}`: Weights for each σ-point for the mean.
 - `residual_x::Function = -`: Function to compute residual between states.
-
-**Note** that you only need to specify `n`, `α`, `β`, `κ` parameters,
-weights will be computed automatically based on those parameters.
 """
 struct MerweScaled
     n::Int64
@@ -40,6 +38,19 @@ function MerweScaled(
     MerweScaled(n, α, β, κ, Σ_w, m_w, residual_x)
 end
 
+function Base.show(io::IO, merwe::MerweScaled)
+    print(
+        io, "Merwe Scaled:\n",
+        "n: ", repr(MIME("text/plain"), merwe.n, context=io), "\n",
+        "α: ", repr(MIME("text/plain"), merwe.α, context=io), "\n",
+        "β: ", repr(MIME("text/plain"), merwe.β, context=io), "\n",
+        "κ: ", repr(MIME("text/plain"), merwe.κ, context=io), "\n",
+        "Σ_w: ", repr(MIME("text/plain"), merwe.Σ_w, context=io), "\n",
+        "m_w: ", repr(MIME("text/plain"), merwe.m_w, context=io), "\n",
+        "residual_x: ", repr(MIME("text/plain"), merwe.residual_x, context=io), "\n",
+    )
+end
+
 """
 ```julia
 num_σ_points(σ_parameters::MerweScaled)::Int64
@@ -50,6 +61,11 @@ Return number of σ-points for given σ-parameters.
 num_σ_points(σ_parameters::MerweScaled)::Int64 = 2 * σ_parameters.n + 1
 
 """
+```julia
+σ_weights(
+    ;n::Int64, α::Float64, β::Float64, κ::Float64
+)::Tuple{Array{Float64, 1}, Array{Float64, 1}}
+```
 Compute weights for each σ-point for the covariance `P` and mean `x`.
 
 # Arguments
@@ -97,9 +113,9 @@ function calculate_σ_points(
 
     Σ = zeros(Float64, 2σ_parameters.n + 1, σ_parameters.n)
     Σ[1, :] = x
-    for i = 1:σ_parameters.n
-        Σ[i + 1, :] = σ_parameters.residual_x(y=x, x=-U[i, :])
-        Σ[σ_parameters.n + i + 1, :] = σ_parameters.residual_x(y=x, x=U[i, :])
+    @inbounds for i = 1:σ_parameters.n
+        Σ[i + 1, :] = σ_parameters.residual_x(x, -U[i, :])
+        Σ[σ_parameters.n + i + 1, :] = σ_parameters.residual_x(x, U[i, :])
     end
     Σ
 end

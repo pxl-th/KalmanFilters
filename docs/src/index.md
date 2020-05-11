@@ -6,9 +6,6 @@
 UKFState
 ```
 ```@docs
-unscented_transform
-```
-```@docs
 predict!
 ```
 ```@docs

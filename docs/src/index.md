@@ -3,6 +3,7 @@
 This library provides implementation of different Kalman Filters.
 
 ## Example
+Minimal example with constant velocity model.
 
 Necessary imports:
 ```julia

@@ -1,4 +1,4 @@
 **/*.swp
+**/Manifest.toml
 docs/build
 docs/site
-Manifest.toml

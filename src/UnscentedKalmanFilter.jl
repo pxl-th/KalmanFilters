@@ -3,10 +3,9 @@ export UKFState, predict!, update!
 
 using LinearAlgebra: I, dot, diagm
 
-include("SigmaPoints.jl")
 include("Helpers.jl")
-using .SigmaPoints: MerweScaled, calculate_σ_points, num_σ_points
-using .Helpers: default_mean_f, default_add_x, default_residual
+using ..SigmaPoints
+using .Helpers
 
 """
 ```julia
@@ -133,7 +132,7 @@ function cross_variance(
     ;ukf::UKFState, x::Array{Float64, 1}, z::Array{Float64, 1}
 )::Array{Float64, 2}
     Δx = ukf.residual_x(ukf.σ_fx, x)
-    Δz = ukf.residual_z(ukf.σ_fx, z)
+    Δz = ukf.residual_z(ukf.σ_hx, z)
     Δx' * diagm(ukf.σ_parameters.Σ_w) * Δz
 end
 
@@ -247,7 +246,7 @@ function update!(
     )
     ukf.S_inv[:] = inv(ukf.S)
 
-    cv = cross_variance(ukf=ukf, x=zp, z=z)
+    cv = cross_variance(ukf=ukf, x=ukf.x, z=zp)
     ukf.K[:] = cv * ukf.S_inv
     ukf.y[:] = ukf.residual_z(z, zp)
 

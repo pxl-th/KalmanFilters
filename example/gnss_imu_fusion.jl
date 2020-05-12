@@ -4,9 +4,8 @@ using LinearAlgebra: dot, I
 #= using Plots: plot, plot!, gr, gui =#
 #= gr() =#
 
-include("../src/UnscentedKalmanFilter.jl")
-using .UnscentedKalmanFilter
-using .UnscentedKalmanFilter.SigmaPoints
+using KalmanFilters.UnscentedKalmanFilter
+using KalmanFilters.SigmaPoints
 
 function normalize_angle(α::Float64)::Float64
     m = 2π

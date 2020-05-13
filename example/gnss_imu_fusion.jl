@@ -1,9 +1,6 @@
 using DelimitedFiles: readdlm
 using LinearAlgebra: dot, I
 
-#= using Plots: plot, plot!, gr, gui =#
-#= gr() =#
-
 using KalmanFilters.UnscentedKalmanFilter
 using KalmanFilters.SigmaPoints
 
@@ -17,24 +14,24 @@ function normalize_angle(α::Float64)::Float64
 end
 
 function state_residual(
-    y::Array{Float64, 1}, x::Array{Float64, 1}
-)::Array{Float64, 1}
+    y::AbstractArray{Float64, 1}, x::AbstractArray{Float64, 1}
+)::AbstractArray{Float64, 1}
     r = y - x
     r[3] = normalize_angle(r[3])
     r
 end
 
 function state_residual(
-    y::Array{Float64, 2}, x::Array{Float64, 1},
-)::Array{Float64, 2}
+    y::AbstractArray{Float64, 2}, x::AbstractArray{Float64, 1}
+)::AbstractArray{Float64, 2}
     R = y .- x'
-    R[:, 3] = normalize_angle.(R[:, 3])
+    R[:, 3] .= normalize_angle.(@view(R[:, 3]))
     R
 end
 
 function state_add(
-    y::Array{Float64, 1}, x::Array{Float64, 1}
-)::Array{Float64, 1}
+    y::AbstractArray{Float64, 1}, x::AbstractArray{Float64, 1}
+)::AbstractArray{Float64, 1}
     r = y + x
     r[3] = normalize_angle(r[3])
     r
@@ -43,14 +40,14 @@ end
 function state_mean(
     Σ::Array{Float64, 2}, m_w::Array{Float64, 1}
 )::Array{Float64, 1}
-    Float64[
-        dot(Σ[:, 1], m_w);
-        dot(Σ[:, 2], m_w);
-        atan(dot(sin.(Σ[:, 3]), m_w), dot(cos.(Σ[:, 3]), m_w))
+    [
+        dot(@view(Σ[:, 1]), m_w),
+        dot(@view(Σ[:, 2]), m_w),
+        atan(dot(sin.(@view(Σ[:, 3])), m_w), dot(cos.(@view(Σ[:, 3])), m_w)),
     ]
 end
 
-hx(;x::Array{Float64, 1})::Array{Float64, 1} = x
+hx(;x::AbstractArray{Float64, 1})::AbstractArray{Float64, 1} = x
 
 function fx(
     ;x::Array{Float64, 1}, δt::Float64,
@@ -64,12 +61,12 @@ function fx(
     θ = x[3]
     s = ν * δt
     if abs(α) < 0.017
-        return x + Float64[s * cos(θ); s * sin(θ); 0.0]
+        return x + [s * cos(θ), s * sin(θ), 0.0]
     end
 
     β = (s / wheelbase) * tan(α)
     r = s / β
-    x + [-r * sin(θ) + r * sin(θ + β); r * cos(θ) - r * cos(θ + β); β]
+    x + [-r * sin(θ) + r * sin(θ + β), r * cos(θ) - r * cos(θ + β), β]
 end
 
 load_from_txt(path::String) = readdlm(path, ' ', Float64, '\n')
@@ -98,8 +95,8 @@ function main()
         mean_x=state_mean, mean_z=state_mean,
         residual_x=state_residual, residual_z=state_residual
     )
-    ukf.x[:] = [positions[1, 1]; positions[1, 2]; compass[1]]
-    ukf.P[:] *= 0.1
+    ukf.x .= [positions[1, 1], positions[1, 2], compass[1]]
+    ukf.P .*= 0.1
 
     δt = 1.0 / 50
     μ = zeros(Float64, 2)
@@ -108,11 +105,9 @@ function main()
     Q = Float64[[4e-12 4e-10 2e-8]; [4e-10 4e-8 2e-6]; [2e-8 2e-6 1e-4]]
 
     track = zeros(Float64, size(imu_time, 1), 2)
-    cmp = IOContext(stdout, :compact => true, :limit => true)
-    println(cmp, ukf)
-
     pos_i::Int64 = 1
     can_update::Bool = false
+
     for (i, t) = enumerate(imu_time)
         μ[1] = speed[i]
         μ[2] = steer[i]
@@ -130,11 +125,8 @@ function main()
         end
         track[i, :] = ukf.x[1:2]
     end
-    println(cmp, ukf)
 
-    #= plot(positions[:, 1], positions[:, 2], label="Noised GNSS") =#
-    #= plot!(track[:, 1], track[:, 2], label="Fused") =#
-    #= gui() =#
+    println(ukf.x)
 end
 
 main()

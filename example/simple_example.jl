@@ -2,7 +2,6 @@ using LinearAlgebra: I, diagm
 using KalmanFilters.UnscentedKalmanFilter
 using KalmanFilters.SigmaPoints
 
-
 function fx(
     ;x::AbstractArray{Float64, 1}, δt::Float64,
 )::AbstractArray{Float64, 1}
@@ -11,7 +10,6 @@ function fx(
 end
 
 hx(;x::AbstractArray{Float64, 1})::AbstractArray{Float64, 1} = x[[1, 3]]
-
 
 function main()
     δt = 1.0

@@ -1,9 +1,6 @@
 using DelimitedFiles: readdlm
 using LinearAlgebra: dot, I
 
-#= using Plots: plot, plot!, gr, gui =#
-#= gr() =#
-
 using KalmanFilters.UnscentedKalmanFilter
 using KalmanFilters.SigmaPoints
 
@@ -130,9 +127,6 @@ function main()
     end
 
     println(ukf.x)
-    #= plot(positions[:, 1], positions[:, 2], label="Noised GNSS") =#
-    #= plot!(track[:, 1], track[:, 2], label="Fused") =#
-    #= gui() =#
 end
 
 main()

@@ -58,7 +58,7 @@ num_σ_points(σ_parameters::MerweScaled)::Int64
 
 Return number of σ-points for given σ-parameters.
 """
-num_σ_points(σ_parameters::MerweScaled)::Int64 = 2 * σ_parameters.n + 1
+num_σ_points(σ_parameters::MerweScaled)::Int64 = 2σ_parameters.n + 1
 
 """
 ```julia
@@ -80,12 +80,11 @@ function σ_weights(
     λ = α ^ 2 * (n + κ) - n
     c = 0.5 / (n + λ)
 
-    size = 2n + 1
-    Σ_w = [c for i = 1:size]
-    m_w = Σ_w[:]
+    Σ_w = [c for i = 1:2n + 1]
+    m_w = copy(Σ_w)
 
     w = λ / (n + λ)
-    Σ_w[1] = w + (1 - α^2 + β)
+    Σ_w[1] = w + (1 - α ^ 2 + β)
     m_w[1] = w
     Σ_w, m_w
 end
@@ -112,10 +111,12 @@ function calculate_σ_points(
     U = cholesky(Symmetric(P * (λ + σ_parameters.n))).U
 
     Σ = zeros(Float64, 2σ_parameters.n + 1, σ_parameters.n)
+    @inbounds begin
     Σ[1, :] = x
-    @inbounds for i = 1:σ_parameters.n
-        Σ[i + 1, :] = σ_parameters.residual_x(x, -U[i, :])
-        Σ[σ_parameters.n + i + 1, :] = σ_parameters.residual_x(x, U[i, :])
+    for i = 1:σ_parameters.n
+        Σ[i + 1, :] = σ_parameters.residual_x(x, -@view(U[i, :]))
+        Σ[σ_parameters.n + i + 1, :] = σ_parameters.residual_x(x, @view(U[i, :]))
+    end
     end
     Σ
 end
